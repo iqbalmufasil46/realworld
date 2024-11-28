@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: conduit-app
-        image: conduitacr.azurecr.io/conduit-app:latest
+        image: conduitacr.azurecr.io/conduit-app:latest123
         ports:
         - containerPort: 4321 # Updated to match the internal container port
       imagePullSecrets:
@@ -33,4 +33,3 @@ spec:
   - protocol: TCP
     port: 80       # External port for accessing the app
     targetPort: 4321 # Matches the containerPort inside the pod
-ajdhflhsdfgljshfgshfsdjflsf
