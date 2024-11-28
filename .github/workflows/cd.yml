@@ -39,18 +39,23 @@ jobs:
       run: |
         kubectl set image deployment/conduit-app conduit-app=conduitacr.azurecr.io/conduit-app:${{ github.sha }} --record
 
-    # Step 6: Verify Deployment Success
-    - name: Verify deployment status
+    # Step 6: Verify Deployment Status and Check Pod Health
+    - name: Verify Deployment Rollout
       id: verify
       run: |
+        # Wait for deployment rollout to complete
         kubectl rollout status deployment conduit-app --timeout=180s
+
+        # Check for failing pods
+        kubectl get pods --selector=app=conduit-app -o json | jq '.items[] | select(.status.phase != "Running") | .metadata.name'
+
       continue-on-error: true
 
-    # Step 7: Log Failure and Rollback on Deployment Failure
+    # Step 7: Log Failure and Rollback Deployment
     - name: Log deployment failure
       if: failure() && steps.verify.outcome == 'failure'
       run: |
-        echo "Deployment verification failed. Initiating rollback."
+        echo "Deployment failed. Pods are not healthy."
         exit 1
 
     - name: Rollback Deployment
@@ -58,9 +63,9 @@ jobs:
       run: |
         echo "Rolling back to the previous stable version..."
         kubectl rollout undo deployment conduit-app
-        echo "Rollback complete. The application is now running the previous stable version."
+        echo "Rollback complete."
 
-    # Step 8: Final Status
+    # Step 8: Final Workflow Status
     - name: Mark workflow as failed if rollback occurred
       if: failure() && steps.verify.outcome == 'failure'
       run: |
