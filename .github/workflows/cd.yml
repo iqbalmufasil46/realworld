@@ -3,33 +3,38 @@ name: CD Pipeline
 on:
   push:
     branches:
-      - develop
       - main
+      - release/*
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+    # Step 1: Checkout the repository
     - name: Checkout code
       uses: actions/checkout@v3
 
+    # Step 2: Log in to Azure
     - name: Log in to Azure
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Set up Azure Kubernetes Service
+    # Step 3: Set up AKS credentials
+    - name: Set up AKS credentials
       run: |
-        az aks get-credentials --resource-group <RESOURCE_GROUP> --name <CLUSTER_NAME>
+        az aks get-credentials --resource-group ConduitResourceGroup --name conduitacr
 
+    # Step 4: Build and push Docker image to ACR
     - name: Build and push Docker image
       run: |
-        az acr login --name <ACR_NAME>
-        docker build -t <ACR_NAME>.azurecr.io/conduit-app:${{ github.sha }} .
-        docker push <ACR_NAME>.azurecr.io/conduit-app:${{ github.sha }}
+        az acr login --name conduitacr
+        docker build -t conduitacr.azurecr.io/conduit-app:${{ github.sha }} .
+        docker push conduitacr.azurecr.io/conduit-app:${{ github.sha }}
 
+    # Step 5: Deploy to AKS
     - name: Deploy to AKS
       run: |
-        kubectl set image deployment/conduit-app conduit-app=<ACR_NAME>.azurecr.io/conduit-app:${{ github.sha }}
+        kubectl set image deployment/conduit-app conduit-app=conduitacr.azurecr.io/conduit-app:${{ github.sha }}
 
