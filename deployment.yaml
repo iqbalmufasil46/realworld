@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: conduit-app
-        image: conduitacr.azurecr.io/conduit-app:latest12
+        image: conduitacr.azurecr.io/conduit-app:latest123
         ports:
         - containerPort: 4321 # Updated to match the internal container port
       imagePullSecrets:
