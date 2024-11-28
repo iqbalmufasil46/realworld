@@ -1,0 +1,35 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Log in to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Set up Azure Kubernetes Service
+      run: |
+        az aks get-credentials --resource-group <RESOURCE_GROUP> --name <CLUSTER_NAME>
+
+    - name: Build and push Docker image
+      run: |
+        az acr login --name <ACR_NAME>
+        docker build -t <ACR_NAME>.azurecr.io/conduit-app:${{ github.sha }} .
+        docker push <ACR_NAME>.azurecr.io/conduit-app:${{ github.sha }}
+
+    - name: Deploy to AKS
+      run: |
+        kubectl set image deployment/conduit-app conduit-app=<ACR_NAME>.azurecr.io/conduit-app:${{ github.sha }}
+
