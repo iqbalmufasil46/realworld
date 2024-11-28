@@ -46,10 +46,24 @@ jobs:
         kubectl rollout status deployment conduit-app --timeout=180s
       continue-on-error: true
 
-    # Step 7: Automatic Rollback on Failure
+    # Step 7: Log Failure and Rollback on Deployment Failure
+    - name: Log deployment failure
+      if: failure() && steps.verify.outcome == 'failure'
+      run: |
+        echo "Deployment verification failed. Initiating rollback."
+        exit 1
+
     - name: Rollback Deployment
       if: failure() && steps.verify.outcome == 'failure'
       run: |
-        echo "Deployment failed. Rolling back to the previous stable version."
+        echo "Rolling back to the previous stable version..."
         kubectl rollout undo deployment conduit-app
+        echo "Rollback complete. The application is now running the previous stable version."
+
+    # Step 8: Final Status
+    - name: Mark workflow as failed if rollback occurred
+      if: failure() && steps.verify.outcome == 'failure'
+      run: |
+        echo "Workflow completed with rollback due to deployment failure."
+        exit 1
 
