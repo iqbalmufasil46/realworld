@@ -43,7 +43,7 @@ jobs:
     - name: Verify deployment status
       id: verify
       run: |
-        kubectl rollout status deployment conduit-app --timeout=150s
+        kubectl rollout status deployment conduit-app --timeout=180s
       continue-on-error: true
 
     # Step 7: Automatic Rollback on Failure
