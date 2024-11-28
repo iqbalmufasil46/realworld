@@ -24,7 +24,7 @@ jobs:
     # Step 3: Set up AKS credentials
     - name: Set up AKS credentials
       run: |
-        az aks get-credentials --resource-group ConduitResourceGroup --name conduitacr
+        az aks get-credentials --resource-group ConduitResourceGroup --name ConduitAKS
 
     # Step 4: Build and push Docker image to ACR
     - name: Build and push Docker image
