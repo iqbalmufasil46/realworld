@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: Deployment123
+kind: Deployment
 metadata:
   name: conduit-app
 spec:
