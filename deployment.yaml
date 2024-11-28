@@ -4,6 +4,7 @@ metadata:
   name: conduit-app
 spec:
   replicas: 1
+  revisionHistoryLimit: 5 # Retain the last 5 revisions
   selector:
     matchLabels:
       app: conduit-app

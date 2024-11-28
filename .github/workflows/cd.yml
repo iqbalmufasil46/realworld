@@ -33,8 +33,8 @@ jobs:
         docker build -t conduitacr.azurecr.io/conduit-app:${{ github.sha }} .
         docker push conduitacr.azurecr.io/conduit-app:${{ github.sha }}
 
-    # Step 5: Deploy to AKS
-    - name: Deploy to AKS
+    # Step 5: Deploy to AKS with --record flag
+    - name: Deploy to AKS with change tracking
       run: |
-        kubectl set image deployment/conduit-app conduit-app=conduitacr.azurecr.io/conduit-app:${{ github.sha }}
+        kubectl set image deployment/conduit-app conduit-app=conduitacr.azurecr.io/conduit-app:${{ github.sha }} --record
 
