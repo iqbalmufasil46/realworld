@@ -1,4 +1,4 @@
-name: CD Pipeline with Rollback
+name: CD Pipeline with Rollback and Deployment YAML Changes
 
 on:
   push:
@@ -26,36 +26,50 @@ jobs:
       run: |
         az aks get-credentials --resource-group ConduitResourceGroup --name ConduitAKS
 
-    # Step 4: Build and push Docker image to ACR
+    # Step 4: Apply deployment.yaml if changed
+    - name: Apply deployment.yaml if modified
+      run: |
+        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "deployment.yaml"; then
+          echo "Detected changes in deployment.yaml. Applying to Kubernetes..."
+          kubectl apply -f deployment.yaml
+        else
+          echo "No changes in deployment.yaml detected. Skipping Kubernetes application."
+        fi
+
+    # Step 5: Build and push Docker image to ACR
     - name: Build and push Docker image
       run: |
         az acr login --name conduitacr
         docker build -t conduitacr.azurecr.io/conduit-app:${{ github.sha }} .
         docker push conduitacr.azurecr.io/conduit-app:${{ github.sha }}
 
-    # Step 5: Deploy to AKS with change tracking
+    # Step 6: Deploy to AKS with change tracking
     - name: Deploy to AKS
       id: deploy
       run: |
         kubectl set image deployment/conduit-app conduit-app=conduitacr.azurecr.io/conduit-app:${{ github.sha }} --record
 
-    # Step 6: Verify Deployment Status and Check Pod Health
+    # Step 7: Verify Deployment Rollout
+    - name: Install jq
+      run: sudo apt-get install -y jq
+
     - name: Verify Deployment Rollout
       id: verify
       run: |
         # Wait for deployment rollout to complete
-        kubectl rollout status deployment conduit-app --timeout=180s
+        kubectl rollout status deployment conduit-app --timeout=200s
 
-        # Check for failing pods
-        kubectl get pods --selector=app=conduit-app -o json | jq '.items[] | select(.status.phase != "Running") | .metadata.name'
+        # Log unhealthy pods
+        echo "Checking for unhealthy pods..."
+        kubectl get pods --selector=app=conduit-app -o json | jq -r '.items[] | select(.status.phase != "Running") | .metadata.name'
 
       continue-on-error: true
 
-    # Step 7: Log Failure and Rollback Deployment
+    # Step 8: Log Failure and Rollback Deployment
     - name: Log deployment failure
       if: failure() && steps.verify.outcome == 'failure'
       run: |
-        echo "Deployment failed. Pods are not healthy."
+        echo "Deployment verification failed. Pods are not healthy."
         exit 1
 
     - name: Rollback Deployment
@@ -65,7 +79,7 @@ jobs:
         kubectl rollout undo deployment conduit-app
         echo "Rollback complete."
 
-    # Step 8: Final Workflow Status
+    # Step 9: Final Workflow Status
     - name: Mark workflow as failed if rollback occurred
       if: failure() && steps.verify.outcome == 'failure'
       run: |
