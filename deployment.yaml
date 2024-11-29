@@ -68,7 +68,7 @@ spec:
     kind: Deployment
     name: conduit-app
   minReplicas: 1 # Start with 1 replica in dev
-  maxReplicas: 5 # Scale up to 5 replicas for dev
+  maxReplicas: 2 # Scale up to 5 replicas for dev
   metrics:
   - type: Resource
     resource:
