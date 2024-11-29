@@ -87,8 +87,3 @@ jobs:
       run: |
         k6 run stress-test.js || echo "Stress test failed. Investigate the issue."
 
-    # Step 10: Apply Prometheus Monitoring (Optional)
-    - name: Apply Prometheus Monitoring
-      run: |
-        kubectl apply -f prometheus-config.yaml -n monitoring
-
