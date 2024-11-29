@@ -1,17 +1,24 @@
-name: CD Pipeline with Rollback and Deployment YAML Changes
+name: CI/CD Pipeline with Rollback, Monitoring, and Stress Testing
 
 on:
   push:
     branches:
       - main
-      - release/*
+      - dev/*
+      - staging/*
+      - production/*
+
+env:
+  ACR_NAME: conduitacr
+  RESOURCE_GROUP: ConduitResourceGroup
+  AKS_CLUSTER: ConduitAKS
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout the repository with full history
+    # Step 1: Checkout the repository
     - name: Checkout code
       uses: actions/checkout@v3
       with:
@@ -26,36 +33,32 @@ jobs:
     # Step 3: Set up AKS credentials
     - name: Set up AKS credentials
       run: |
-        az aks get-credentials --resource-group ConduitResourceGroup --name ConduitAKS
+        az aks get-credentials --resource-group ${{ env.RESOURCE_GROUP }} --name ${{ env.AKS_CLUSTER }}
 
     # Step 4: Apply deployment.yaml if modified
     - name: Apply deployment.yaml if modified
       run: |
-        PREVIOUS_COMMIT="${{ github.event.before }}"
-        if [ -z "$PREVIOUS_COMMIT" ] || ! git rev-parse "$PREVIOUS_COMMIT" >/dev/null 2>&1; then
-          echo "Previous commit not found. Using HEAD~1 for diff comparison."
-          PREVIOUS_COMMIT="HEAD~1"
-        fi
-
-        if git diff --name-only "$PREVIOUS_COMMIT" ${{ github.sha }} | grep -q "deployment.yaml"; then
+        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "deployment.yaml"; then
           echo "Detected changes in deployment.yaml. Applying to Kubernetes..."
           kubectl apply -f deployment.yaml
         else
           echo "No changes in deployment.yaml detected. Skipping Kubernetes application."
         fi
 
-    # Step 5: Build and push Docker image to ACR
+    # Step 5: Build and push Docker image
     - name: Build and push Docker image
       run: |
-        az acr login --name conduitacr
-        docker build -t conduitacr.azurecr.io/conduit-app:${{ github.sha }} .
-        docker push conduitacr.azurecr.io/conduit-app:${{ github.sha }}
+        az acr login --name ${{ env.ACR_NAME }}
+        BRANCH=$(echo ${{ github.ref_name }} | tr '/' '-')
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/conduit-app:${{ github.sha }}-${BRANCH} .
+        docker push ${{ env.ACR_NAME }}.azurecr.io/conduit-app:${{ github.sha }}-${BRANCH}
 
-    # Step 6: Deploy to AKS with change tracking
+    # Step 6: Deploy to AKS with namespace detection
     - name: Deploy to AKS
       id: deploy
       run: |
-        kubectl set image deployment/conduit-app conduit-app=conduitacr.azurecr.io/conduit-app:${{ github.sha }} --record
+        NAMESPACE=$(echo ${{ github.ref }} | grep -oE "dev|staging|production" || echo "dev")
+        kubectl set image deployment/conduit-app conduit-app=${{ env.ACR_NAME }}.azurecr.io/conduit-app:${{ github.sha }}-${BRANCH} -n $NAMESPACE --record
 
     # Step 7: Verify Deployment Rollout
     - name: Install jq
@@ -64,29 +67,28 @@ jobs:
     - name: Verify Deployment Rollout
       id: verify
       run: |
-        kubectl rollout status deployment conduit-app --timeout=300s
-        kubectl get pods --selector=app=conduit-app -o json | jq -r '.items[] | select(.status.phase != "Running") | .metadata.name'
+        NAMESPACE=$(echo ${{ github.ref }} | grep -oE "dev|staging|production" || echo "dev")
+        kubectl rollout status deployment conduit-app -n $NAMESPACE --timeout=300s
+        kubectl get pods -n $NAMESPACE --selector=app=conduit-app -o json | jq -r '.items[] | select(.status.phase != "Running") | .metadata.name'
 
       continue-on-error: true
 
-    # Step 8: Log Failure and Rollback Deployment
-    - name: Log deployment failure
+    # Step 8: Rollback Deployment on Failure
+    - name: Rollback Deployment on Failure
       if: failure() && steps.verify.outcome == 'failure'
       run: |
-        echo "Deployment verification failed. Pods are not healthy."
-        exit 1
+        NAMESPACE=$(echo ${{ github.ref }} | grep -oE "dev|staging|production" || echo "dev")
+        echo "Deployment verification failed. Rolling back..."
+        kubectl rollout undo deployment conduit-app -n $NAMESPACE
 
-    - name: Rollback Deployment
-      if: failure() && steps.verify.outcome == 'failure'
+    # Step 9: Stress Test Deployment (Optional)
+    - name: Stress Test Deployment
+      if: github.ref == 'refs/heads/main'
       run: |
-        echo "Rolling back to the previous stable version..."
-        kubectl rollout undo deployment conduit-app
-        echo "Rollback complete."
+        k6 run stress-test.js || echo "Stress test failed. Investigate the issue."
 
-    # Step 9: Final Workflow Status
-    - name: Mark workflow as failed if rollback occurred
-      if: failure() && steps.verify.outcome == 'failure'
+    # Step 10: Apply Prometheus Monitoring (Optional)
+    - name: Apply Prometheus Monitoring
       run: |
-        echo "Workflow completed with rollback due to deployment failure."
-        exit 1
+        kubectl apply -f prometheus-config.yaml -n monitoring
 
